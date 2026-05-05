@@ -31,16 +31,6 @@
       gap: 8px;
     }
     #panel-header h1 { font-size: 14px; font-weight: bold; flex: 1; }
-    #panel-close {
-      background: none;
-      border: none;
-      color: #fff;
-      font-size: 20px;
-      cursor: pointer;
-      display: none;
-      line-height: 1;
-      padding: 2px 4px;
-    }
 
     #load-area { padding: 8px; border-bottom: 1px solid #e0e0e0; }
     #load-btn {
@@ -160,23 +150,6 @@
     #map-wrap { flex: 1; position: relative; overflow: hidden; }
     #map { width: 100%; height: 100%; }
 
-    /* 地図上のトグルボタン（モバイル用） */
-    #panel-toggle {
-      display: none;
-      position: fixed;
-      top: 12px; right: 12px;
-      z-index: 9000;
-      background: #1a73e8;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      padding: 10px 14px;
-      font-size: 22px;
-      cursor: pointer;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-    }
 
     /* 番号付きマーカー */
     .num-marker {
@@ -202,47 +175,38 @@
     }
     #loading.show { display: flex; }
 
-    /* バックドロップ（モバイル用） */
-    #backdrop {
-      display: none;
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.4);
-      z-index: 150;
-    }
-    #backdrop.show { display: block; }
-
     /* ---- モバイル対応 ---- */
     @media (max-width: 640px) {
+      body { flex-direction: column; }
+
       #panel {
-        position: fixed;
-        top: 0; left: 0; bottom: 0;
-        width: 85%; min-width: unset;
-        transform: translateX(-100%);
+        width: 100%;
+        min-width: unset;
+        max-height: 45dvh;
         border-right: none;
-        box-shadow: 4px 0 16px rgba(0,0,0,0.3);
-        z-index: 200;
-        transition: transform 0.25s ease;
+        border-bottom: 2px solid #1a73e8;
+        overflow-y: auto;
+        flex-shrink: 0;
       }
-      #panel.open { transform: translateX(0); }
-      #panel-close { display: block !important; }
 
-      #map-wrap { width: 100%; height: 100dvh; }
-      #panel-toggle { display: block; }
+      /* カレンダーをコンパクトに */
+      #calendar td, #calendar th { padding: 2px 1px; font-size: 11px; }
+      .cal-dot { width: 3px; height: 3px; }
 
-      #md-output { max-height: 140px; }
+      #map-wrap { flex: 1; min-height: 0; }
+
+      /* マークダウン出力は短く */
+      #md-output { max-height: 100px; }
     }
   </style>
 </head>
 <body>
 
 <div id="loading">読み込み中...</div>
-<div id="backdrop"></div>
 
 <div id="panel">
   <div id="panel-header">
     <h1>Timeline Viewer</h1>
-    <button id="panel-close" title="閉じる">&#x2715;</button>
   </div>
 
   <div id="load-area">
@@ -275,7 +239,6 @@
 <div id="map-wrap">
   <div id="map"></div>
 </div>
-<button id="panel-toggle">&#9776;</button>
 
 <script>
 'use strict';
@@ -293,20 +256,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19
 }).addTo(map);
 
-// ---- パネル開閉（モバイル） ----
-function openPanel() {
-  document.getElementById('panel').classList.add('open');
-  document.getElementById('backdrop').classList.add('show');
-}
-function closePanel() {
-  document.getElementById('panel').classList.remove('open');
-  document.getElementById('backdrop').classList.remove('show');
-}
 function isMobile() { return window.innerWidth <= 640; }
-
-document.getElementById('panel-toggle').addEventListener('click', openPanel);
-document.getElementById('panel-close').addEventListener('click', closePanel);
-document.getElementById('backdrop').addEventListener('click', closePanel);
 
 // ---- ファイル読み込み ----
 document.getElementById('load-btn').addEventListener('click', () => {
@@ -467,7 +417,6 @@ function selectDate(dateStr) {
   renderDetail(dateStr, orderedVisits);
   renderMap(dateStr, orderedVisits);
 
-  if (isMobile()) closePanel();
 }
 
 // ---- 詳細パネル ----
@@ -786,8 +735,6 @@ const now = new Date();
 calYear = now.getFullYear(); calMonth = now.getMonth() + 1;
 updateCalTitle(); renderCalendar();
 
-// モバイルは初期状態でパネルを開く（ファイル選択できるように）
-if (isMobile()) openPanel();
 </script>
 </body>
 </html>
