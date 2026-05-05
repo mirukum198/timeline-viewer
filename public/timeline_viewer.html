@@ -163,17 +163,19 @@
     /* 地図上のトグルボタン（モバイル用） */
     #panel-toggle {
       display: none;
-      position: absolute;
-      top: 10px; right: 10px;
-      z-index: 1001;
+      position: fixed;
+      top: 12px; right: 12px;
+      z-index: 9000;
       background: #1a73e8;
       color: #fff;
       border: none;
       border-radius: 6px;
-      padding: 8px 12px;
-      font-size: 20px;
+      padding: 10px 14px;
+      font-size: 22px;
       cursor: pointer;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
 
     /* 番号付きマーカー */
@@ -271,9 +273,9 @@
 </div>
 
 <div id="map-wrap">
-  <button id="panel-toggle">&#9776;</button>
   <div id="map"></div>
 </div>
+<button id="panel-toggle">&#9776;</button>
 
 <script>
 'use strict';
