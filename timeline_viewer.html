@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Timeline Viewer</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { display: flex; height: 100dvh; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; background: #f0f0f0; overflow: hidden; }
+
+    /* ---- 左パネル ---- */
+    #panel {
+      width: 270px;
+      min-width: 270px;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+      border-right: 1px solid #ccc;
+      overflow: hidden;
+      z-index: 100;
+      transition: transform 0.25s ease;
+    }
+    #panel-header {
+      padding: 10px 12px;
+      background: #1a73e8;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #panel-header h1 { font-size: 14px; font-weight: bold; flex: 1; }
+    #panel-close {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 20px;
+      cursor: pointer;
+      display: none;
+      line-height: 1;
+      padding: 2px 4px;
+    }
+
+    #load-area { padding: 8px; border-bottom: 1px solid #e0e0e0; }
+    #load-btn {
+      width: 100%;
+      padding: 7px;
+      background: #1a73e8;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    #load-btn:hover { background: #1557b0; }
+    #file-status { font-size: 11px; color: #666; margin-top: 4px; text-align: center; }
+
+    /* カレンダー */
+    #cal-nav {
+      display: flex;
+      align-items: center;
+      padding: 5px 8px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #e0e0e0;
+      gap: 4px;
+    }
+    #cal-nav button {
+      background: none; border: 1px solid #ccc; border-radius: 3px;
+      cursor: pointer; padding: 2px 7px; font-size: 12px;
+    }
+    #cal-nav button:hover { background: #e8eaed; }
+    #cal-title { flex: 1; text-align: center; font-weight: bold; font-size: 13px; }
+
+    #calendar {
+      width: 100%;
+      border-collapse: collapse;
+      background: #f8f9fa;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    #calendar th { text-align: center; padding: 3px 0; font-size: 11px; color: #666; font-weight: normal; }
+    #calendar td {
+      text-align: center; padding: 3px 2px; cursor: pointer;
+      position: relative; font-size: 12px;
+    }
+    #calendar td:hover { background: #e8f0fe; }
+    #calendar td.has-data { font-weight: bold; }
+    #calendar td.selected { background: #1a73e8; color: #fff; border-radius: 50%; }
+    #calendar td.today:not(.selected) { color: #1a73e8; }
+    .cal-dot { display: block; width: 4px; height: 4px; background: #1a73e8; border-radius: 50%; margin: 0 auto; }
+    #calendar td.selected .cal-dot { background: #fff; }
+
+    /* 日別詳細 */
+    #detail { flex: 1; overflow-y: auto; padding: 8px; }
+    #detail-date { font-size: 14px; font-weight: bold; color: #333; margin-bottom: 8px; }
+    #detail-empty { color: #999; font-size: 12px; }
+
+    .section-label { font-size: 11px; color: #666; margin: 6px 0 3px; }
+
+    .visit-item {
+      border: 1px solid #e0e0e0; border-radius: 6px;
+      padding: 6px 9px; margin-bottom: 5px;
+      cursor: pointer; background: #fafafa;
+      display: flex; align-items: flex-start; gap: 7px;
+    }
+    .visit-item:hover { background: #e8f0fe; border-color: #1a73e8; }
+    .visit-item.active { background: #e8f0fe; border-color: #1a73e8; }
+
+    .visit-num {
+      min-width: 22px; height: 22px;
+      background: #1a73e8; color: #fff;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: bold;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .visit-body { flex: 1; min-width: 0; }
+    .visit-name {
+      font-weight: bold; font-size: 12px; color: #1a1a1a;
+      display: flex; align-items: center; gap: 4px;
+      flex-wrap: wrap;
+    }
+    .visit-name a { color: #1a73e8; font-size: 11px; text-decoration: none; flex-shrink: 0; }
+    .visit-name a:hover { text-decoration: underline; }
+    .visit-meta { color: #666; font-size: 11px; margin-top: 1px; }
+    .visit-type {
+      display: inline-block; font-size: 10px; padding: 1px 5px;
+      border-radius: 10px; background: #e8eaed; color: #555; margin-top: 2px;
+    }
+    .visit-type.home { background: #fce8e6; color: #c5221f; }
+    .visit-type.work { background: #e6f4ea; color: #137333; }
+
+    .activity-item {
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 9px; color: #555; font-size: 11px; margin-bottom: 2px;
+    }
+
+    /* マークダウン */
+    #md-section { padding: 8px; border-top: 1px solid #e0e0e0; }
+    #md-btn {
+      width: 100%; padding: 6px; background: #34a853;
+      color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;
+    }
+    #md-btn:hover { background: #2d8f47; }
+    #md-output {
+      margin-top: 6px; display: none; background: #f8f9fa;
+      border: 1px solid #e0e0e0; border-radius: 4px; padding: 8px;
+      font-family: monospace; font-size: 11px; white-space: pre-wrap;
+      max-height: 180px; overflow-y: auto;
+    }
+    #md-copy-btn {
+      display: none; width: 100%; margin-top: 4px; padding: 5px;
+      background: #fff; border: 1px solid #ccc; border-radius: 4px;
+      cursor: pointer; font-size: 12px;
+    }
+    #md-copy-btn:hover { background: #f0f0f0; }
+
+    /* 地図 */
+    #map-wrap { flex: 1; position: relative; overflow: hidden; }
+    #map { width: 100%; height: 100%; }
+
+    /* 地図上のトグルボタン（モバイル用） */
+    #panel-toggle {
+      display: none;
+      position: absolute;
+      top: 10px; left: 10px;
+      z-index: 500;
+      background: #fff;
+      border: 2px solid rgba(0,0,0,0.2);
+      border-radius: 4px;
+      padding: 5px 9px;
+      font-size: 18px;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    /* 番号付きマーカー */
+    .num-marker {
+      background: #1a73e8;
+      color: #fff;
+      border-radius: 50%;
+      width: 24px; height: 24px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: bold;
+      border: 2px solid #fff;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    .num-marker.home { background: #c5221f; }
+    .num-marker.work { background: #137333; }
+
+    /* ローディング */
+    #loading {
+      display: none; position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(255,255,255,0.85);
+      z-index: 9999; align-items: center; justify-content: center;
+      font-size: 16px; color: #333;
+    }
+    #loading.show { display: flex; }
+
+    /* ---- モバイル対応 ---- */
+    @media (max-width: 640px) {
+      body { flex-direction: column; }
+
+      #panel {
+        position: absolute;
+        top: 0; left: 0; bottom: 0;
+        width: 100%; min-width: unset;
+        transform: translateX(-100%);
+        border-right: none;
+        border-bottom: 1px solid #ccc;
+        box-shadow: 2px 0 8px rgba(0,0,0,0.2);
+      }
+      #panel.open { transform: translateX(0); }
+      #panel-close { display: block !important; }
+
+      #map-wrap { flex: 1; height: 100dvh; }
+      #panel-toggle { display: block; }
+
+      #md-output { max-height: 140px; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading">読み込み中...</div>
+
+<div id="panel">
+  <div id="panel-header">
+    <h1>Timeline Viewer</h1>
+    <button id="panel-close" title="閉じる">&#x2715;</button>
+  </div>
+
+  <div id="load-area">
+    <button id="load-btn">JSONファイルを開く</button>
+    <input type="file" id="file-input" accept=".json" style="display:none">
+    <div id="file-status">ファイルを選択してください</div>
+  </div>
+
+  <div id="cal-nav">
+    <button id="prev-month">&#9664;</button>
+    <div id="cal-title">----年--月</div>
+    <button id="next-month">&#9654;</button>
+  </div>
+  <table id="calendar">
+    <thead><tr><th>日</th><th>月</th><th>火</th><th>水</th><th>木</th><th>金</th><th>土</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <div id="detail">
+    <div id="detail-empty">日付を選択してください</div>
+  </div>
+
+  <div id="md-section">
+    <button id="md-btn">マークダウン出力</button>
+    <div id="md-output"></div>
+    <button id="md-copy-btn">クリップボードにコピー</button>
+  </div>
+</div>
+
+<div id="map-wrap">
+  <button id="panel-toggle">&#9776;</button>
+  <div id="map"></div>
+</div>
+
+<script>
+'use strict';
+
+// ---- 状態 ----
+let dayMap = {};
+let selectedDate = null;
+let calYear, calMonth;
+let mapLayers = [];  // 全レイヤー（一括削除用）
+
+// ---- 地図初期化 ----
+const map = L.map('map').setView([36.18, 139.54], 12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors',
+  maxZoom: 19
+}).addTo(map);
+
+// ---- パネル開閉（モバイル） ----
+document.getElementById('panel-toggle').addEventListener('click', () => {
+  document.getElementById('panel').classList.add('open');
+});
+document.getElementById('panel-close').addEventListener('click', () => {
+  document.getElementById('panel').classList.remove('open');
+});
+
+// ---- ファイル読み込み ----
+document.getElementById('load-btn').addEventListener('click', () => {
+  document.getElementById('file-input').click();
+});
+document.getElementById('file-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('file-status').textContent = '読み込み中...';
+  document.getElementById('loading').classList.add('show');
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      parseData(JSON.parse(ev.target.result));
+      document.getElementById('file-status').textContent = file.name;
+    } catch(err) {
+      document.getElementById('file-status').textContent = 'エラー: ' + err.message;
+      alert('読み込みエラー: ' + err.message);
+    }
+    document.getElementById('loading').classList.remove('show');
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+// ---- データパース ----
+function parseData(raw) {
+  dayMap = {};
+  let segments = Array.isArray(raw) ? raw
+               : raw.semanticSegments ? raw.semanticSegments
+               : raw.timelineObjects  ? convertLegacy(raw.timelineObjects)
+               : [];
+
+  for (const seg of segments) {
+    const dateStr = localDateStr(seg.startTime);
+    if (!dateStr) continue;
+    if (!dayMap[dateStr]) dayMap[dateStr] = { visits: [], activities: [], paths: [] };
+
+    if (seg.visit) {
+      const tc = seg.visit.topCandidate || {};
+      const loc = parseGeo(tc.placeLocation);
+      if (loc) {
+        dayMap[dateStr].visits.push({
+          placeID: tc.placeID || '',
+          semanticType: tc.semanticType || '',
+          lat: loc.lat, lng: loc.lng,
+          startTime: seg.startTime, endTime: seg.endTime,
+          durationMin: durationMin(seg.startTime, seg.endTime),
+        });
+      }
+    } else if (seg.activity) {
+      const act = seg.activity;
+      dayMap[dateStr].activities.push({
+        type: (act.topCandidate || {}).type || 'unknown',
+        distanceM: parseFloat(act.distanceMeters) || 0,
+        start: parseGeo(act.start), end: parseGeo(act.end),
+        startTime: seg.startTime, endTime: seg.endTime,
+        durationMin: durationMin(seg.startTime, seg.endTime),
+      });
+    } else if (seg.timelinePath) {
+      dayMap[dateStr].paths.push({
+        points: seg.timelinePath.map(p => parseGeo(p.point)).filter(Boolean),
+        startTime: seg.startTime, endTime: seg.endTime,
+      });
+    }
+  }
+
+  const dates = Object.keys(dayMap).sort();
+  if (!dates.length) return;
+  const last = dates[dates.length - 1];
+  const [y, m] = last.split('-').map(Number);
+  calYear = y; calMonth = m;
+  updateCalTitle();
+  renderCalendar();
+  selectDate(last);
+}
+
+function convertLegacy(timelineObjects) {
+  return timelineObjects.map(obj => {
+    if (obj.placeVisit) {
+      const pv = obj.placeVisit;
+      return {
+        startTime: pv.duration.startTimestamp,
+        endTime: pv.duration.endTimestamp,
+        visit: { topCandidate: {
+          placeID: pv.location.placeId || '',
+          semanticType: pv.placeVisitType || '',
+          placeLocation: `geo:${(pv.location.latitudeE7/1e7).toFixed(6)},${(pv.location.longitudeE7/1e7).toFixed(6)}`,
+        }}
+      };
+    }
+    if (obj.activitySegment) {
+      const as = obj.activitySegment;
+      return {
+        startTime: as.duration.startTimestamp,
+        endTime: as.duration.endTimestamp,
+        activity: {
+          topCandidate: { type: as.activityType || 'unknown' },
+          distanceMeters: String(as.distance || 0),
+          start: `geo:${(as.startLocation.latitudeE7/1e7).toFixed(6)},${(as.startLocation.longitudeE7/1e7).toFixed(6)}`,
+          end: `geo:${(as.endLocation.latitudeE7/1e7).toFixed(6)},${(as.endLocation.longitudeE7/1e7).toFixed(6)}`,
+        }
+      };
+    }
+    return null;
+  }).filter(Boolean);
+}
+
+// ---- カレンダー ----
+function updateCalTitle() {
+  document.getElementById('cal-title').textContent = `${calYear}年${calMonth}月`;
+}
+function renderCalendar() {
+  const tbody = document.querySelector('#calendar tbody');
+  const firstDay = new Date(calYear, calMonth - 1, 1).getDay();
+  const lastDay = new Date(calYear, calMonth, 0).getDate();
+  const today = toDateStr(new Date());
+  let html = '<tr>';
+  for (let i = 0; i < firstDay; i++) html += '<td></td>';
+  for (let d = 1; d <= lastDay; d++) {
+    if ((firstDay + d - 1) % 7 === 0 && d > 1) html += '</tr><tr>';
+    const ds = `${calYear}-${pad(calMonth)}-${pad(d)}`;
+    const hasData = !!dayMap[ds];
+    const sel = ds === selectedDate;
+    const cls = [sel?'selected':'', hasData?'has-data':'', ds===today&&!sel?'today':''].filter(Boolean).join(' ');
+    const dot = hasData && !sel ? '<span class="cal-dot"></span>' : '';
+    html += `<td class="${cls}" data-date="${ds}">${d}${dot}</td>`;
+  }
+  html += '</tr>';
+  tbody.innerHTML = html;
+}
+
+document.querySelector('#calendar').addEventListener('click', e => {
+  const td = e.target.closest('td[data-date]');
+  if (td) selectDate(td.dataset.date);
+});
+document.getElementById('prev-month').addEventListener('click', () => {
+  if (calMonth === 1) { calMonth = 12; calYear--; } else calMonth--;
+  updateCalTitle(); renderCalendar();
+});
+document.getElementById('next-month').addEventListener('click', () => {
+  if (calMonth === 12) { calMonth = 1; calYear++; } else calMonth++;
+  updateCalTitle(); renderCalendar();
+});
+
+// ---- 日付選択 ----
+function selectDate(dateStr) {
+  selectedDate = dateStr;
+  renderCalendar();
+  hideMd();
+
+  const day = dayMap[dateStr];
+  // 訪問地を時刻順にソートして番号付け
+  const orderedVisits = day
+    ? [...day.visits].sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+    : [];
+
+  renderDetail(dateStr, orderedVisits);
+  renderMap(dateStr, orderedVisits);
+
+  // モバイル：選択後パネルを閉じる（地図が見やすいように）
+  if (window.innerWidth <= 640) {
+    document.getElementById('panel').classList.remove('open');
+  }
+}
+
+// ---- 詳細パネル ----
+const SEMANTIC_LABEL = {
+  'Home': '自宅', 'Work': '職場',
+  'TYPE_HOME': '自宅', 'TYPE_WORK': '職場',
+};
+const ACTIVITY_ICON = {
+  'walking': '🚶', 'in passenger vehicle': '🚗', 'cycling': '🚲',
+  'running': '🏃', 'in bus': '🚌', 'in train': '🚃',
+  'in subway': '🚇', 'flying': '✈️', 'on motorcycle': '🏍️',
+};
+
+function renderDetail(dateStr, orderedVisits) {
+  const detail = document.getElementById('detail');
+  const day = dayMap[dateStr];
+
+  if (!day) {
+    detail.innerHTML = `<div id="detail-date">${formatDateJa(dateStr)}</div><div id="detail-empty">データなし</div>`;
+    return;
+  }
+
+  let html = `<div id="detail-date">${formatDateJa(dateStr)}</div>`;
+
+  if (orderedVisits.length > 0) {
+    html += '<div class="section-label">訪問場所（時刻順）</div>';
+    orderedVisits.forEach((v, i) => {
+      const label = SEMANTIC_LABEL[v.semanticType] || '';
+      const typeKey = v.semanticType.toLowerCase().includes('home') ? 'home'
+                    : v.semanticType.toLowerCase().includes('work') ? 'work' : '';
+      const mapsUrl = v.placeID
+        ? `https://maps.google.com/?q=place_id:${v.placeID}`
+        : `https://maps.google.com/?q=${v.lat},${v.lng}`;
+      html += `
+        <div class="visit-item" data-idx="${i}" data-lat="${v.lat}" data-lng="${v.lng}">
+          <div class="visit-num ${typeKey}">${i + 1}</div>
+          <div class="visit-body">
+            <div class="visit-name">
+              <span>${label || '訪問場所'}</span>
+              <a href="${mapsUrl}" target="_blank">地図▸</a>
+            </div>
+            <div class="visit-meta">${formatDuration(v.durationMin)} &nbsp;|&nbsp; ${formatTime(v.startTime)}〜${formatTime(v.endTime)}</div>
+            ${typeKey ? `<span class="visit-type ${typeKey}">${label}</span>` : ''}
+          </div>
+        </div>`;
+    });
+  }
+
+  const actSummary = summarizeActivities(day.activities);
+  if (actSummary.length > 0) {
+    html += '<div class="section-label">移動</div>';
+    for (const a of actSummary) {
+      html += `<div class="activity-item">${ACTIVITY_ICON[a.type]||'🔵'} ${activityLabel(a.type)}: ${formatDistance(a.distanceM)}</div>`;
+    }
+  }
+
+  detail.innerHTML = html;
+
+  detail.querySelectorAll('.visit-item').forEach(el => {
+    el.addEventListener('click', () => {
+      detail.querySelectorAll('.visit-item').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+      map.setView([parseFloat(el.dataset.lat), parseFloat(el.dataset.lng)], 17);
+    });
+  });
+}
+
+function summarizeActivities(activities) {
+  const byType = {};
+  for (const a of activities) {
+    if (!byType[a.type]) byType[a.type] = { type: a.type, distanceM: 0 };
+    byType[a.type].distanceM += a.distanceM;
+  }
+  return Object.values(byType).sort((a, b) => b.distanceM - a.distanceM);
+}
+
+// ---- 地図描画 ----
+const ACTIVITY_COLOR = {
+  'walking': '#34a853', 'running': '#fbbc04', 'cycling': '#ff6d00',
+  'in passenger vehicle': '#4285f4', 'in bus': '#9c27b0',
+  'in train': '#f44336', 'in subway': '#e91e63', 'flying': '#00bcd4',
+};
+
+function renderMap(dateStr, orderedVisits) {
+  mapLayers.forEach(l => map.removeLayer(l));
+  mapLayers = [];
+
+  const day = dayMap[dateStr];
+  if (!day) return;
+
+  const bounds = [];
+
+  // 全イベントを時刻順に統合してルートラインを構築
+  // { t: Date, lat, lng, type: 'visit'|'path'|'activity', ... }
+  const allPoints = [];
+
+  for (const path of day.paths) {
+    const base = new Date(path.startTime).getTime();
+    for (const pt of path.points) {
+      const offsetMs = parseInt(pt.durationMinutesOffsetFromStartTime || 0) * 60000;
+      allPoints.push({ t: base + offsetMs, lat: pt.lat, lng: pt.lng, type: 'path' });
+    }
+  }
+  for (const act of day.activities) {
+    if (act.start) allPoints.push({ t: new Date(act.startTime).getTime(), lat: act.start.lat, lng: act.start.lng, type: 'activity', actType: act.type });
+    if (act.end)   allPoints.push({ t: new Date(act.endTime).getTime(),   lat: act.end.lat,   lng: act.end.lng,   type: 'activity', actType: act.type });
+  }
+  for (const v of orderedVisits) {
+    allPoints.push({ t: new Date(v.startTime).getTime(), lat: v.lat, lng: v.lng, type: 'visit', visit: v });
+  }
+  allPoints.sort((a, b) => a.t - b.t);
+
+  // 重複・近接点の間引き（10m以内の連続点はスキップ）
+  const dedupedPoints = [];
+  for (const pt of allPoints) {
+    if (dedupedPoints.length === 0) { dedupedPoints.push(pt); continue; }
+    const prev = dedupedPoints[dedupedPoints.length - 1];
+    const dist = Math.hypot((pt.lat - prev.lat) * 111320, (pt.lng - prev.lng) * 91000);
+    if (dist > 10 || pt.type === 'visit') dedupedPoints.push(pt);
+  }
+
+  // 1. 統合ルートライン（全点を薄いグレーで）
+  const routeCoords = dedupedPoints.map(p => [p.lat, p.lng]);
+  if (routeCoords.length >= 2) {
+    const routeLine = L.polyline(routeCoords, { color: '#999', weight: 2, opacity: 0.55 }).addTo(map);
+    mapLayers.push(routeLine);
+    routeCoords.forEach(ll => bounds.push(ll));
+  }
+
+  // 2. activity タイプ別の色付きライン（移動区間を上書き）
+  for (const act of day.activities) {
+    if (!act.start || !act.end) continue;
+    const color = ACTIVITY_COLOR[act.type] || '#999';
+    const pl = L.polyline(
+      [[act.start.lat, act.start.lng],[act.end.lat, act.end.lng]],
+      { color, weight: 3, opacity: 0.7, dashArray: '7,4' }
+    ).addTo(map);
+    mapLayers.push(pl);
+  }
+
+  // 3. 通過ウェイポイント（visit以外の代表点を小さな灰丸で表示）
+  // timelinePath の各セグメント先頭点だけに絞る（多すぎ防止）
+  const pathStarts = new Set();
+  for (const path of day.paths) {
+    if (path.points.length > 0) {
+      const p = path.points[0];
+      pathStarts.add(`${p.lat.toFixed(4)},${p.lng.toFixed(4)}`);
+    }
+  }
+  for (const pt of dedupedPoints) {
+    if (pt.type !== 'path') continue;
+    const key = `${pt.lat.toFixed(4)},${pt.lng.toFixed(4)}`;
+    if (!pathStarts.has(key)) continue;
+    const dot = L.circleMarker([pt.lat, pt.lng], {
+      radius: 4, color: '#888', fillColor: '#ccc', fillOpacity: 0.9, weight: 1.5
+    }).addTo(map);
+    dot.bindPopup(`通過点 ${new Date(pt.t).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`);
+    mapLayers.push(dot);
+  }
+
+  // 4. 訪問地の番号付きマーカー（時刻順）
+  orderedVisits.forEach((v, i) => {
+    const typeKey = v.semanticType.toLowerCase().includes('home') ? 'home'
+                  : v.semanticType.toLowerCase().includes('work') ? 'work' : '';
+    const label = SEMANTIC_LABEL[v.semanticType] || '訪問場所';
+    const mapsUrl = v.placeID
+      ? `https://maps.google.com/?q=place_id:${v.placeID}`
+      : `https://maps.google.com/?q=${v.lat},${v.lng}`;
+
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="num-marker ${typeKey}">${i + 1}</div>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+      popupAnchor: [0, -14],
+    });
+    const marker = L.marker([v.lat, v.lng], { icon }).addTo(map);
+    marker.bindPopup(`
+      <b>${i + 1}. ${label}</b><br>
+      ${formatDuration(v.durationMin)}<br>
+      ${formatTime(v.startTime)}〜${formatTime(v.endTime)}<br>
+      <a href="${mapsUrl}" target="_blank">Google Mapsで開く</a>
+    `);
+    mapLayers.push(marker);
+    bounds.push([v.lat, v.lng]);
+  });
+
+  if (bounds.length > 0) {
+    map.fitBounds(bounds, { padding: [30, 30] });
+  }
+}
+
+// ---- マークダウン出力 ----
+document.getElementById('md-btn').addEventListener('click', () => {
+  if (!selectedDate) return;
+  const day = dayMap[selectedDate];
+  const orderedVisits = day
+    ? [...day.visits].sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+    : [];
+  const md = generateMarkdown(selectedDate, orderedVisits);
+  document.getElementById('md-output').textContent = md;
+  document.getElementById('md-output').style.display = 'block';
+  document.getElementById('md-copy-btn').style.display = 'block';
+});
+document.getElementById('md-copy-btn').addEventListener('click', () => {
+  const text = document.getElementById('md-output').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('md-copy-btn');
+    btn.textContent = 'コピーしました';
+    setTimeout(() => btn.textContent = 'クリップボードにコピー', 1500);
+  });
+});
+function hideMd() {
+  document.getElementById('md-output').style.display = 'none';
+  document.getElementById('md-copy-btn').style.display = 'none';
+}
+
+function generateMarkdown(dateStr, orderedVisits) {
+  const day = dayMap[dateStr];
+  if (!day) return `# ${formatDateJa(dateStr)}\n\nデータなし`;
+
+  let md = `# ${formatDateJa(dateStr)}\n\n`;
+
+  if (orderedVisits.length > 0) {
+    md += `## 訪問場所\n\n`;
+    orderedVisits.forEach((v, i) => {
+      const label = SEMANTIC_LABEL[v.semanticType] || '訪問場所';
+      const mapsUrl = v.placeID
+        ? `https://maps.google.com/?q=place_id:${v.placeID}`
+        : `https://maps.google.com/?q=${v.lat},${v.lng}`;
+      md += `${i+1}. [${label}](${mapsUrl}) - ${formatDuration(v.durationMin)} (${formatTime(v.startTime)}〜${formatTime(v.endTime)})\n`;
+    });
+    md += '\n';
+  }
+
+  const actSummary = summarizeActivities(day.activities);
+  if (actSummary.length > 0) {
+    md += `## 移動\n\n`;
+    for (const a of actSummary) {
+      md += `- ${activityLabel(a.type)}: ${formatDistance(a.distanceM)}\n`;
+    }
+    md += '\n';
+  }
+
+  return md.trim();
+}
+
+// ---- ユーティリティ ----
+function parseGeo(str) {
+  if (!str) return null;
+  const m = str.match(/geo:([\d.\-]+),([\d.\-]+)/);
+  return m ? { lat: parseFloat(m[1]), lng: parseFloat(m[2]) } : null;
+}
+
+function localDateStr(ts) {
+  if (!ts) return null;
+  try {
+    if (/[+-]\d{2}:\d{2}$/.test(ts)) {
+      const m = ts.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+    }
+    const jst = new Date(new Date(ts).getTime() + 9*60*60*1000);
+    return toDateStr(jst);
+  } catch { return null; }
+}
+
+function toDateStr(d) {
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+function pad(n) { return String(n).padStart(2, '0'); }
+
+function durationMin(start, end) {
+  return Math.round((new Date(end) - new Date(start)) / 60000);
+}
+
+function formatDuration(min) {
+  if (min < 60) return `${min}分`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return m > 0 ? `${h}時間${m}分` : `${h}時間`;
+}
+
+function formatDistance(m) {
+  return m < 1000 ? `${Math.round(m)}m` : `${(m/1000).toFixed(1)}km`;
+}
+
+function formatTime(ts) {
+  if (!ts) return '';
+  try {
+    if (/[+-]\d{2}:\d{2}$/.test(ts)) {
+      const m = ts.match(/T(\d{2}):(\d{2})/);
+      return m ? `${m[1]}:${m[2]}` : '';
+    }
+    const jst = new Date(new Date(ts).getTime() + 9*60*60*1000);
+    return `${pad(jst.getUTCHours())}:${pad(jst.getUTCMinutes())}`;
+  } catch { return ''; }
+}
+
+function formatDateJa(ds) {
+  const [y, m, d] = ds.split('-').map(Number);
+  const dow = ['日','月','火','水','木','金','土'][new Date(y, m-1, d).getDay()];
+  return `${y}年${m}月${d}日（${dow}）`;
+}
+
+function activityLabel(type) {
+  const map = {
+    'walking':'徒歩','running':'ランニング','cycling':'自転車',
+    'in passenger vehicle':'車','in bus':'バス','in train':'電車',
+    'in subway':'地下鉄','flying':'飛行機','on motorcycle':'バイク',
+  };
+  return map[type] || type;
+}
+
+// カレンダー初期表示
+const now = new Date();
+calYear = now.getFullYear(); calMonth = now.getMonth() + 1;
+updateCalTitle(); renderCalendar();
+</script>
+</body>
+</html>
