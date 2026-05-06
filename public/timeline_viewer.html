@@ -33,28 +33,34 @@
     #panel-header h1 { font-size: 14px; font-weight: bold; flex: 1; }
     #panel-header .version { font-size: 10px; opacity: 0.7; }
 
-    /* アコーディョン */
-    .acc-header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 7px 10px;
+    /* ---- タブ ---- */
+    #tab-bar {
+      display: flex;
       background: #f1f3f4;
-      border-bottom: 1px solid #e0e0e0;
+      border-bottom: 2px solid #e0e0e0;
+      flex-shrink: 0;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 8px 2px;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+      font-size: 11px;
+      color: #666;
       cursor: pointer;
-      font-size: 12px; font-weight: bold; color: #444;
-      user-select: none;
+      font-weight: bold;
       -webkit-tap-highlight-color: transparent;
+      transition: color 0.15s, border-color 0.15s;
     }
-    .acc-header:hover { background: #e8eaed; }
-    .acc-arrow { font-size: 10px; transition: transform 0.2s; }
-    .acc-header.collapsed .acc-arrow { transform: rotate(-90deg); }
-    .acc-body {
-      overflow: hidden;
-      max-height: 600px;
-      transition: max-height 0.25s ease;
-    }
-    .acc-body.collapsed { max-height: 0; }
+    .tab-btn:hover { color: #1a73e8; }
+    .tab-btn.active { color: #1a73e8; border-bottom-color: #1a73e8; }
 
-    #load-area { padding: 8px; }
+    .tab-content { display: none; flex: 1; overflow-y: auto; flex-direction: column; }
+    .tab-content.active { display: flex; }
+
+    #load-area { padding: 10px; }
     #load-btn {
       width: 100%;
       padding: 7px;
@@ -102,8 +108,24 @@
     .cal-dot { display: block; width: 4px; height: 4px; background: #1a73e8; border-radius: 50%; margin: 0 auto; }
     #calendar td.selected .cal-dot { background: #fff; }
 
+    /* フィルターバー */
+    #filter-bar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 10px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #e0e0e0;
+      font-size: 12px; color: #444;
+      flex-shrink: 0;
+    }
+    #filter-bar label { display: flex; align-items: center; gap: 4px; }
+    #min-dur {
+      width: 52px; padding: 2px 4px;
+      border: 1px solid #ccc; border-radius: 3px;
+      font-size: 12px; text-align: right;
+    }
+
     /* 日別詳細 */
-    #detail { padding: 8px; max-height: 300px; overflow-y: auto; }
+    #detail { padding: 8px; }
     #detail-date { font-size: 14px; font-weight: bold; color: #333; margin-bottom: 8px; }
     #detail-empty { color: #999; font-size: 12px; }
 
@@ -149,7 +171,7 @@
     }
 
     /* マークダウン */
-    #md-section { padding: 8px; border-top: 1px solid #e0e0e0; }
+    #md-section { padding: 10px; }
     #md-btn {
       width: 100%; padding: 6px; background: #34a853;
       color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;
@@ -204,10 +226,9 @@
       #panel {
         width: 100%;
         min-width: unset;
-        max-height: 45dvh;
+        height: 48dvh;
         border-right: none;
         border-bottom: 2px solid #1a73e8;
-        overflow-y: auto;
         flex-shrink: 0;
       }
 
@@ -216,8 +237,6 @@
       .cal-dot { width: 3px; height: 3px; }
 
       #map-wrap { flex: 1; min-height: 0; }
-
-      /* マークダウン出力は短く */
       #md-output { max-height: 100px; }
     }
   </style>
@@ -229,11 +248,17 @@
 <div id="panel">
   <div id="panel-header">
     <h1>Timeline Viewer</h1>
-    <span class="version">v0.4</span>
+    <span class="version">v0.5</span>
   </div>
 
-  <div class="acc-header" data-target="acc-load">ファイル読み込み <span class="acc-arrow">▼</span></div>
-  <div class="acc-body" id="acc-load">
+  <div id="tab-bar">
+    <button class="tab-btn active" data-tab="tab-load">ファイル</button>
+    <button class="tab-btn" data-tab="tab-cal">カレンダー</button>
+    <button class="tab-btn" data-tab="tab-detail">履歴</button>
+    <button class="tab-btn" data-tab="tab-md">MD出力</button>
+  </div>
+
+  <div id="tab-load" class="tab-content active">
     <div id="load-area">
       <button id="load-btn">JSONファイルを開く</button>
       <input type="file" id="file-input" accept=".json" style="display:none">
@@ -241,8 +266,7 @@
     </div>
   </div>
 
-  <div class="acc-header" data-target="acc-cal">カレンダー <span class="acc-arrow">▼</span></div>
-  <div class="acc-body" id="acc-cal">
+  <div id="tab-cal" class="tab-content">
     <div id="cal-nav">
       <button id="prev-month">&#9664;</button>
       <div id="cal-title">----年--月</div>
@@ -254,17 +278,19 @@
     </table>
   </div>
 
-  <div class="acc-header collapsed" data-target="acc-detail">訪問履歴 <span class="acc-arrow">▼</span></div>
-  <div class="acc-body collapsed" id="acc-detail">
+  <div id="tab-detail" class="tab-content">
+    <div id="filter-bar">
+      <label>最短滞在: <input type="number" id="min-dur" value="0" min="0" max="999"> 分以上</label>
+      <span id="filter-count" style="margin-left:auto;font-size:11px;color:#888;"></span>
+    </div>
     <div id="detail">
       <div id="detail-empty">日付を選択してください</div>
     </div>
   </div>
 
-  <div class="acc-header collapsed" data-target="acc-md">マークダウン出力 <span class="acc-arrow">▼</span></div>
-  <div class="acc-body collapsed" id="acc-md">
+  <div id="tab-md" class="tab-content">
     <div id="md-section">
-      <button id="md-btn">マークダウン出力</button>
+      <button id="md-btn">マークダウン生成</button>
       <div id="md-output"></div>
       <button id="md-copy-btn">クリップボードにコピー</button>
     </div>
@@ -293,13 +319,25 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 function isMobile() { return window.innerWidth <= 640; }
 
-// ---- アコーディョン ----
-document.querySelectorAll('.acc-header').forEach(header => {
-  header.addEventListener('click', () => {
-    const body = document.getElementById(header.dataset.target);
-    header.classList.toggle('collapsed');
-    body.classList.toggle('collapsed');
-  });
+// ---- タブ切り替え ----
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === tabId));
+}
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+// ---- 滞在時間フィルター ----
+let minDurFilter = 0;
+document.getElementById('min-dur').addEventListener('input', e => {
+  minDurFilter = Math.max(0, parseInt(e.target.value) || 0);
+  if (selectedDate) {
+    const day = dayMap[selectedDate];
+    const ordered = day ? [...day.visits].sort((a,b) => new Date(a.startTime)-new Date(b.startTime)) : [];
+    renderDetail(selectedDate, ordered);
+    renderMap(selectedDate, ordered);
+  }
 });
 
 // ---- ファイル読み込み ----
@@ -447,18 +485,11 @@ document.getElementById('next-month').addEventListener('click', () => {
 });
 
 // ---- 日付選択 ----
-function accOpen(targetId) {
-  const body = document.getElementById(targetId);
-  const header = document.querySelector(`.acc-header[data-target="${targetId}"]`);
-  if (body) body.classList.remove('collapsed');
-  if (header) header.classList.remove('collapsed');
-}
-
 function selectDate(dateStr) {
   selectedDate = dateStr;
   renderCalendar();
   hideMd();
-  accOpen('acc-detail');
+  switchTab('tab-detail');
 
   const day = dayMap[dateStr];
   // 訪問地を時刻順にソートして番号付け
@@ -488,14 +519,18 @@ function renderDetail(dateStr, orderedVisits) {
 
   if (!day) {
     detail.innerHTML = `<div id="detail-date">${formatDateJa(dateStr)}</div><div id="detail-empty">データなし</div>`;
+    document.getElementById('filter-count').textContent = '';
     return;
   }
 
+  const filtered = orderedVisits.filter(v => v.durationMin >= minDurFilter);
+  document.getElementById('filter-count').textContent = `${filtered.length}件`;
+
   let html = `<div id="detail-date">${formatDateJa(dateStr)}</div>`;
 
-  if (orderedVisits.length > 0) {
+  if (filtered.length > 0) {
     html += '<div class="section-label">訪問場所（時刻順）</div>';
-    orderedVisits.forEach((v, i) => {
+    filtered.forEach((v, i) => {
       const label = SEMANTIC_LABEL[v.semanticType] || '';
       const typeKey = v.semanticType.toLowerCase().includes('home') ? 'home'
                     : v.semanticType.toLowerCase().includes('work') ? 'work' : '';
@@ -629,8 +664,9 @@ function renderMap(dateStr, orderedVisits) {
     mapLayers.push(dot);
   }
 
-  // 4. 訪問地の番号付きマーカー（時刻順）
-  orderedVisits.forEach((v, i) => {
+  // 4. 訪問地の番号付きマーカー（フィルター適用・時刻順）
+  const filteredVisits = orderedVisits.filter(v => v.durationMin >= minDurFilter);
+  filteredVisits.forEach((v, i) => {
     const typeKey = v.semanticType.toLowerCase().includes('home') ? 'home'
                   : v.semanticType.toLowerCase().includes('work') ? 'work' : '';
     const label = SEMANTIC_LABEL[v.semanticType] || '訪問場所';
