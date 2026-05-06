@@ -539,8 +539,8 @@ function renderDetail(dateStr, orderedVisits) {
       const typeKey = v.semanticType.toLowerCase().includes('home') ? 'home'
                     : v.semanticType.toLowerCase().includes('work') ? 'work' : '';
       const mapsUrl = v.placeID
-        ? `https://maps.google.com/?q=place_id:${v.placeID}`
-        : `https://maps.google.com/?q=${v.lat},${v.lng}`;
+        ? `https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}&query_place_id=${v.placeID}`
+        : `https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}`;
       html += `
         <div class="visit-item" data-idx="${i}" data-lat="${v.lat}" data-lng="${v.lng}">
           <div class="visit-num ${typeKey}">${i + 1}</div>
@@ -706,8 +706,8 @@ function generateMarkdown(dateStr, orderedVisits) {
     orderedVisits.forEach((v, i) => {
       const label = SEMANTIC_LABEL[v.semanticType] || '訪問場所';
       const mapsUrl = v.placeID
-        ? `https://maps.google.com/?q=place_id:${v.placeID}`
-        : `https://maps.google.com/?q=${v.lat},${v.lng}`;
+        ? `https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}&query_place_id=${v.placeID}`
+        : `https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}`;
       md += `${i+1}. [${label}](${mapsUrl}) - ${formatDuration(v.durationMin)} (${formatTime(v.startTime)}〜${formatTime(v.endTime)})\n`;
     });
     md += '\n';
