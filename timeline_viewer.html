@@ -400,7 +400,12 @@ function parseData(raw) {
       });
     } else if (seg.timelinePath) {
       dayMap[dateStr].paths.push({
-        points: seg.timelinePath.map(p => parseGeo(p.point)).filter(Boolean),
+        points: seg.timelinePath.map(p => {
+          const geo = parseGeo(p.point);
+          if (!geo) return null;
+          geo.offsetMin = parseFloat(p.durationMinutesOffsetFromStartTime) || 0;
+          return geo;
+        }).filter(Boolean),
         startTime: seg.startTime, endTime: seg.endTime,
       });
     }
@@ -489,7 +494,6 @@ function selectDate(dateStr) {
   selectedDate = dateStr;
   renderCalendar();
   hideMd();
-  switchTab('tab-detail');
 
   const day = dayMap[dateStr];
   // 訪問地を時刻順にソートして番号付け
@@ -581,11 +585,6 @@ function summarizeActivities(activities) {
 }
 
 // ---- 地図描画 ----
-const ACTIVITY_COLOR = {
-  'walking': '#34a853', 'running': '#fbbc04', 'cycling': '#ff6d00',
-  'in passenger vehicle': '#4285f4', 'in bus': '#9c27b0',
-  'in train': '#f44336', 'in subway': '#e91e63', 'flying': '#00bcd4',
-};
 
 function renderMap(dateStr, orderedVisits) {
   mapLayers.forEach(l => map.removeLayer(l));
@@ -603,13 +602,8 @@ function renderMap(dateStr, orderedVisits) {
   for (const path of day.paths) {
     const base = new Date(path.startTime).getTime();
     for (const pt of path.points) {
-      const offsetMs = parseInt(pt.durationMinutesOffsetFromStartTime || 0) * 60000;
-      allPoints.push({ t: base + offsetMs, lat: pt.lat, lng: pt.lng, type: 'path' });
+      allPoints.push({ t: base + pt.offsetMin * 60000, lat: pt.lat, lng: pt.lng, type: 'path' });
     }
-  }
-  for (const act of day.activities) {
-    if (act.start) allPoints.push({ t: new Date(act.startTime).getTime(), lat: act.start.lat, lng: act.start.lng, type: 'activity', actType: act.type });
-    if (act.end)   allPoints.push({ t: new Date(act.endTime).getTime(),   lat: act.end.lat,   lng: act.end.lng,   type: 'activity', actType: act.type });
   }
   for (const v of orderedVisits) {
     allPoints.push({ t: new Date(v.startTime).getTime(), lat: v.lat, lng: v.lng, type: 'visit', visit: v });
@@ -625,40 +619,19 @@ function renderMap(dateStr, orderedVisits) {
     if (dist > 10 || pt.type === 'visit') dedupedPoints.push(pt);
   }
 
-  // 1. 統合ルートライン（全点を薄いグレーで）
-  const routeCoords = dedupedPoints.map(p => [p.lat, p.lng]);
-  if (routeCoords.length >= 2) {
-    const routeLine = L.polyline(routeCoords, { color: '#999', weight: 2, opacity: 0.55 }).addTo(map);
+  // 1. timelinePath の全点を青線で結んで描画
+  const pathCoords = dedupedPoints.filter(p => p.type === 'path').map(p => [p.lat, p.lng]);
+  if (pathCoords.length >= 2) {
+    const routeLine = L.polyline(pathCoords, { color: '#1a73e8', weight: 3, opacity: 0.75 }).addTo(map);
     mapLayers.push(routeLine);
-    routeCoords.forEach(ll => bounds.push(ll));
+    pathCoords.forEach(ll => bounds.push(ll));
   }
 
-  // 2. activity タイプ別の色付きライン（移動区間を上書き）
-  for (const act of day.activities) {
-    if (!act.start || !act.end) continue;
-    const color = ACTIVITY_COLOR[act.type] || '#999';
-    const pl = L.polyline(
-      [[act.start.lat, act.start.lng],[act.end.lat, act.end.lng]],
-      { color, weight: 3, opacity: 0.7, dashArray: '7,4' }
-    ).addTo(map);
-    mapLayers.push(pl);
-  }
-
-  // 3. 通過ウェイポイント（visit以外の代表点を小さな灰丸で表示）
-  // timelinePath の各セグメント先頭点だけに絞る（多すぎ防止）
-  const pathStarts = new Set();
-  for (const path of day.paths) {
-    if (path.points.length > 0) {
-      const p = path.points[0];
-      pathStarts.add(`${p.lat.toFixed(4)},${p.lng.toFixed(4)}`);
-    }
-  }
+  // 2. 通過ウェイポイント（全timelinePath点を青丸で表示）
   for (const pt of dedupedPoints) {
     if (pt.type !== 'path') continue;
-    const key = `${pt.lat.toFixed(4)},${pt.lng.toFixed(4)}`;
-    if (!pathStarts.has(key)) continue;
     const dot = L.circleMarker([pt.lat, pt.lng], {
-      radius: 4, color: '#888', fillColor: '#ccc', fillOpacity: 0.9, weight: 1.5
+      radius: 4, color: '#1a73e8', fillColor: '#4da3ff', fillOpacity: 0.9, weight: 1.5
     }).addTo(map);
     dot.bindPopup(`通過点 ${new Date(pt.t).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`);
     mapLayers.push(dot);
@@ -767,7 +740,7 @@ function localDateStr(ts) {
       return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
     }
     const jst = new Date(new Date(ts).getTime() + 9*60*60*1000);
-    return toDateStr(jst);
+    return `${jst.getUTCFullYear()}-${pad(jst.getUTCMonth()+1)}-${pad(jst.getUTCDate())}`;
   } catch { return null; }
 }
 
