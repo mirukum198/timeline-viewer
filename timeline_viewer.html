@@ -165,6 +165,38 @@
     .visit-type.home { background: #fce8e6; color: #c5221f; }
     .visit-type.work { background: #e6f4ea; color: #137333; }
 
+    .edit-label-btn {
+      background: none; border: none; cursor: pointer;
+      color: #bbb; font-size: 12px; padding: 0 2px; line-height: 1;
+      flex-shrink: 0;
+    }
+    .edit-label-btn:hover { color: #1a73e8; }
+    .label-edit-row {
+      display: flex; align-items: center; gap: 4px; margin-top: 3px;
+    }
+    .label-input {
+      font-size: 12px; padding: 2px 5px;
+      border: 1px solid #1a73e8; border-radius: 3px;
+      flex: 1; min-width: 0;
+    }
+    .label-save-btn {
+      font-size: 11px; padding: 2px 7px;
+      background: #1a73e8; color: #fff;
+      border: none; border-radius: 3px; cursor: pointer; flex-shrink: 0;
+    }
+    .label-section {
+      margin-top: 10px; padding-top: 8px;
+      border-top: 1px solid #e0e0e0;
+    }
+    .label-action-btn {
+      width: 100%; padding: 5px 8px; font-size: 12px;
+      background: #fff; border: 1px solid #ccc;
+      border-radius: 4px; cursor: pointer; margin-bottom: 4px;
+      text-align: left;
+    }
+    .label-action-btn:hover { background: #f0f0f0; }
+    #label-count { font-size: 11px; color: #888; margin-top: 2px; }
+
     .activity-item {
       display: flex; align-items: center; gap: 6px;
       padding: 3px 9px; color: #555; font-size: 11px; margin-bottom: 2px;
@@ -248,7 +280,7 @@
 <div id="panel">
   <div id="panel-header">
     <h1>Timeline Viewer</h1>
-    <span class="version">v0.5</span>
+    <span class="version">v0.7</span>
   </div>
 
   <div id="tab-bar">
@@ -263,6 +295,13 @@
       <button id="load-btn">JSONファイルを開く</button>
       <input type="file" id="file-input" accept=".json" style="display:none">
       <div id="file-status">ファイルを選択してください</div>
+      <div class="label-section">
+        <div class="section-label">場所ラベル</div>
+        <button class="label-action-btn" id="label-export-btn">ラベルをエクスポート (JSON)</button>
+        <button class="label-action-btn" id="label-import-btn">ラベルをインポート (JSON)</button>
+        <input type="file" id="label-file-input" accept=".json" style="display:none">
+        <div id="label-count"></div>
+      </div>
     </div>
   </div>
 
@@ -309,6 +348,7 @@ let dayMap = {};
 let selectedDate = null;
 let calYear, calMonth;
 let mapLayers = [];  // 全レイヤー（一括削除用）
+let placeLabels = JSON.parse(localStorage.getItem('tlLabels') || '{}');
 
 // ---- 地図初期化 ----
 const map = L.map('map').setView([36.18, 139.54], 12);
@@ -506,6 +546,27 @@ function selectDate(dateStr) {
 
 }
 
+// ---- ラベル管理 ----
+function labelKey(v) {
+  return v.placeID || `${v.lat.toFixed(4)},${v.lng.toFixed(4)}`;
+}
+function getPlaceLabel(v) {
+  return placeLabels[labelKey(v)] || SEMANTIC_LABEL[v.semanticType] || null;
+}
+function saveLabel(key, name) {
+  if (name.trim()) {
+    placeLabels[key] = name.trim();
+  } else {
+    delete placeLabels[key];
+  }
+  localStorage.setItem('tlLabels', JSON.stringify(placeLabels));
+  updateLabelCount();
+}
+function updateLabelCount() {
+  const el = document.getElementById('label-count');
+  if (el) el.textContent = `${Object.keys(placeLabels).length}件のラベル保存済み`;
+}
+
 // ---- 詳細パネル ----
 const SEMANTIC_LABEL = {
   'Home': '自宅', 'Work': '職場',
@@ -535,22 +596,25 @@ function renderDetail(dateStr, orderedVisits) {
   if (filtered.length > 0) {
     html += '<div class="section-label">訪問場所（時刻順）</div>';
     filtered.forEach((v, i) => {
-      const label = SEMANTIC_LABEL[v.semanticType] || '';
+      const semanticLabel = SEMANTIC_LABEL[v.semanticType] || '';
       const typeKey = v.semanticType.toLowerCase().includes('home') ? 'home'
                     : v.semanticType.toLowerCase().includes('work') ? 'work' : '';
       const mapsUrl = v.placeID
         ? `https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}&query_place_id=${v.placeID}`
         : `https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}`;
+      const displayLabel = getPlaceLabel(v) || '訪問場所';
+      const key = labelKey(v);
       html += `
-        <div class="visit-item" data-idx="${i}" data-lat="${v.lat}" data-lng="${v.lng}">
+        <div class="visit-item" data-idx="${i}" data-lat="${v.lat}" data-lng="${v.lng}" data-key="${key}">
           <div class="visit-num ${typeKey}">${i + 1}</div>
           <div class="visit-body">
             <div class="visit-name">
-              <span>${label || '訪問場所'}</span>
+              <span class="place-name">${displayLabel}</span>
+              <button class="edit-label-btn" title="ラベルを編集">✎</button>
               <a href="${mapsUrl}" target="_blank">地図▸</a>
             </div>
             <div class="visit-meta">${formatDuration(v.durationMin)} &nbsp;|&nbsp; ${formatTime(v.startTime)}〜${formatTime(v.endTime)}</div>
-            ${typeKey ? `<span class="visit-type ${typeKey}">${label}</span>` : ''}
+            ${typeKey ? `<span class="visit-type ${typeKey}">${semanticLabel}</span>` : ''}
           </div>
         </div>`;
     });
@@ -571,6 +635,52 @@ function renderDetail(dateStr, orderedVisits) {
       detail.querySelectorAll('.visit-item').forEach(x => x.classList.remove('active'));
       el.classList.add('active');
       map.setView([parseFloat(el.dataset.lat), parseFloat(el.dataset.lng)], 17);
+    });
+  });
+
+  // ラベル編集
+  detail.querySelectorAll('.edit-label-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const visitItem = btn.closest('.visit-item');
+      const key = visitItem.dataset.key;
+      const nameSpan = visitItem.querySelector('.place-name');
+      if (visitItem.querySelector('.label-edit-row')) return; // 二重起動防止
+
+      nameSpan.style.display = 'none';
+      btn.style.display = 'none';
+
+      const row = document.createElement('div');
+      row.className = 'label-edit-row';
+      const currentVal = placeLabels[key] || '';
+      row.innerHTML = `<input class="label-input" value="${currentVal}" placeholder="場所名を入力"><button class="label-save-btn">保存</button>`;
+      btn.parentNode.insertBefore(row, nameSpan.nextSibling);
+
+      const input = row.querySelector('.label-input');
+      const saveBtn = row.querySelector('.label-save-btn');
+      input.focus(); input.select();
+
+      function confirm() {
+        saveLabel(key, input.value);
+        if (selectedDate) {
+          const day = dayMap[selectedDate];
+          const ordered = day ? [...day.visits].sort((a,b) => new Date(a.startTime)-new Date(b.startTime)) : [];
+          renderDetail(selectedDate, ordered);
+          renderMap(selectedDate, ordered);
+        }
+      }
+      function cancel() {
+        nameSpan.style.display = '';
+        btn.style.display = '';
+        row.remove();
+      }
+      row.addEventListener('click', e => e.stopPropagation());
+      saveBtn.addEventListener('click', e => { e.stopPropagation(); confirm(); });
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); confirm(); }
+        if (e.key === 'Escape') cancel();
+      });
+      input.addEventListener('click', e => e.stopPropagation());
     });
   });
 }
@@ -642,7 +752,7 @@ function renderMap(dateStr, orderedVisits) {
   filteredVisits.forEach((v, i) => {
     const typeKey = v.semanticType.toLowerCase().includes('home') ? 'home'
                   : v.semanticType.toLowerCase().includes('work') ? 'work' : '';
-    const label = SEMANTIC_LABEL[v.semanticType] || '訪問場所';
+    const label = getPlaceLabel(v) || '訪問場所';
     const mapsUrl = v.placeID
       ? `https://maps.google.com/?q=place_id:${v.placeID}`
       : `https://maps.google.com/?q=${v.lat},${v.lng}`;
@@ -704,7 +814,7 @@ function generateMarkdown(dateStr, orderedVisits) {
   if (orderedVisits.length > 0) {
     md += `## 訪問場所\n\n`;
     orderedVisits.forEach((v, i) => {
-      const label = SEMANTIC_LABEL[v.semanticType] || '訪問場所';
+      const label = getPlaceLabel(v) || '訪問場所';
       const mapsUrl = v.placeID
         ? `https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}&query_place_id=${v.placeID}`
         : `https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}`;
@@ -791,10 +901,53 @@ function activityLabel(type) {
   return map[type] || type;
 }
 
+// ---- ラベル export / import ----
+document.getElementById('label-export-btn').addEventListener('click', () => {
+  const json = JSON.stringify(placeLabels, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'timeline_labels.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+document.getElementById('label-import-btn').addEventListener('click', () => {
+  document.getElementById('label-file-input').click();
+});
+document.getElementById('label-file-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (typeof data === 'object' && !Array.isArray(data)) {
+        placeLabels = { ...placeLabels, ...data };
+        localStorage.setItem('tlLabels', JSON.stringify(placeLabels));
+        updateLabelCount();
+        if (selectedDate) {
+          const day = dayMap[selectedDate];
+          const ordered = day ? [...day.visits].sort((a,b) => new Date(a.startTime)-new Date(b.startTime)) : [];
+          renderDetail(selectedDate, ordered);
+          renderMap(selectedDate, ordered);
+        }
+        alert(`${Object.keys(data).length}件のラベルをインポートしました`);
+      } else {
+        alert('形式が不正です');
+      }
+    } catch(err) {
+      alert('読み込みエラー: ' + err.message);
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+
 // カレンダー初期表示
 const now = new Date();
 calYear = now.getFullYear(); calMonth = now.getMonth() + 1;
 updateCalTitle(); renderCalendar();
+updateLabelCount();
 
 </script>
 </body>
