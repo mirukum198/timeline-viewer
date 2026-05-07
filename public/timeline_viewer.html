@@ -1140,6 +1140,8 @@ async function _sha256(str) {
 function _showMain() {
   const mc = document.getElementById('mainContent');
   mc.style.display = 'flex';
+  // Leaflet はコンテナ非表示時にサイズを取得できないため再計算
+  setTimeout(() => map.invalidateSize(), 50);
 }
 async function checkAuth() {
   const phase = _currentPhase();
