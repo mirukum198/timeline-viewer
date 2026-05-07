@@ -8,7 +8,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { display: flex; height: 100dvh; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; background: #f0f0f0; overflow: hidden; }
+    body { display: block; height: 100dvh; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; background: #f0f0f0; overflow: hidden; }
+    #mainContent { width: 100%; height: 100dvh; }
 
     /* ---- 左パネル ---- */
     #panel {
@@ -310,9 +311,48 @@
       #map-wrap { flex: 1; min-height: 0; }
       #md-output { max-height: 100px; }
     }
+
+    /* ---- 認証 ---- */
+    .gate-screen { display: none; max-width: 380px; margin: 60px auto; padding: 0 16px; }
+    .gate-card { background: white; border-radius: 18px; padding: 36px 28px; text-align: center; box-shadow: 0 2px 20px rgba(0,0,0,0.08); }
+    .gate-title { font-size: 20px; font-weight: 700; margin-bottom: 10px; }
+    .gate-desc { font-size: 13px; color: #8e8e93; line-height: 1.7; margin-bottom: 22px; }
+    .gate-input {
+      width: 100%; font-size: 15px; border: 1.5px solid #d1d1d6; border-radius: 10px;
+      padding: 12px 14px; outline: none; margin-bottom: 12px; color: #1d1d1f; font-family: inherit;
+    }
+    .gate-input:focus { border-color: #1a73e8; }
+    .gate-btn { width: 100%; background: #1a73e8; color: white; border: none; border-radius: 10px; padding: 13px; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .gate-btn:hover { background: #1557b0; }
+    .gate-error { color: #ff3b30; font-size: 13px; margin-top: 10px; min-height: 18px; }
+    .gate-copy { text-align: center; font-size: 11px; color: #8e8e93; margin-top: 16px; }
   </style>
 </head>
 <body>
+
+<!-- Expired screen -->
+<div class="gate-screen" id="expiredScreen">
+  <div class="gate-card">
+    <div class="gate-title">サービス期間終了</div>
+    <p class="gate-desc">現在のパスワードの有効期限が終了しました。<br>最新のパスワードはnoteの有料記事でご確認ください。</p>
+  </div>
+  <p class="gate-copy">Copyright &copy; mirukum198 All Rights Reserved.</p>
+</div>
+
+<!-- Auth screen -->
+<div class="gate-screen" id="authScreen">
+  <div class="gate-card">
+    <div class="gate-title">Timeline Viewer</div>
+    <p class="gate-desc">noteの有料コンテンツ購読者専用ツールです。<br>パスワードを入力してください。</p>
+    <input type="password" id="pwInput" class="gate-input" placeholder="パスワード"
+      onkeydown="if(event.key==='Enter')submitPassword()">
+    <button class="gate-btn" onclick="submitPassword()">ログイン</button>
+    <p class="gate-error" id="pwError"></p>
+  </div>
+  <p class="gate-copy">Copyright &copy; mirukum198 All Rights Reserved.</p>
+</div>
+
+<div id="mainContent" style="display:none; width:100%; height:100%; flex-direction:row;">
 
 <div id="loading">読み込み中...</div>
 
@@ -1078,6 +1118,62 @@ calYear = now.getFullYear(); calMonth = now.getMonth() + 1;
 updateCalTitle(); renderCalendar();
 updateLabelCount();
 
+// --- Auth ---
+const _PH1_HASH   = 'f9dc8aceda814dde19355bea46f3d786c2930336b06e3e88a91135553d66a7ca';
+const _PH2_HASH   = '1cf86fa5c57ba7d6f8771bf7364448efff96c68f52649f56f596882c58c95193';
+const _TRIAL_HASH = 'eb57c8a20f187431a321c035d860c6088422fea2c8bd0b10121088c6ea8cbbbb';
+const _PH1_END    = new Date('2026-07-01T00:00:00+09:00');
+const _PH2_END    = new Date('2026-09-01T00:00:00+09:00');
+const _TRIAL_END  = new Date('2026-05-17T00:00:00+09:00');
+
+function _currentPhase() {
+  const now = new Date();
+  if (now < _PH1_END) return 1;
+  if (now < _PH2_END) return 2;
+  return 0;
+}
+function _trialActive() { return new Date() < _TRIAL_END; }
+async function _sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function _showMain() {
+  const mc = document.getElementById('mainContent');
+  mc.style.display = 'flex';
+}
+async function checkAuth() {
+  const phase = _currentPhase();
+  if (phase === 0) {
+    document.getElementById('expiredScreen').style.display = 'block';
+    return;
+  }
+  if (sessionStorage.getItem('tv_auth') === 'ok') {
+    _showMain(); return;
+  }
+  document.getElementById('authScreen').style.display = 'block';
+  setTimeout(() => document.getElementById('pwInput').focus(), 100);
+}
+async function submitPassword() {
+  const pw = document.getElementById('pwInput').value;
+  if (!pw) return;
+  const hash = await _sha256(pw);
+  const expected = _currentPhase() === 1 ? _PH1_HASH : _PH2_HASH;
+  const isTrial = _trialActive() && hash === _TRIAL_HASH;
+  if (hash === expected || isTrial) {
+    sessionStorage.setItem('tv_auth', 'ok');
+    document.getElementById('authScreen').style.display = 'none';
+    _showMain();
+  } else {
+    document.getElementById('pwError').textContent = 'パスワードが違います。';
+    document.getElementById('pwInput').value = '';
+    document.getElementById('pwInput').focus();
+  }
+}
+
+checkAuth();
+
 </script>
+
+</div><!-- /mainContent -->
 </body>
 </html>
