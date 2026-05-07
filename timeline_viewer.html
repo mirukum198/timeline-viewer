@@ -241,6 +241,45 @@
     .num-marker.home { background: #c5221f; }
     .num-marker.work { background: #137333; }
 
+    /* 場所タブ */
+    #places-search {
+      padding: 7px 10px;
+      border-bottom: 1px solid #e0e0e0;
+      flex-shrink: 0;
+    }
+    #places-search input {
+      width: 100%; padding: 5px 8px;
+      border: 1px solid #ccc; border-radius: 4px;
+      font-size: 12px;
+    }
+    #places-list { padding: 6px 8px; }
+    .places-empty { color: #999; font-size: 12px; padding: 8px 0; text-align: center; line-height: 1.7; }
+
+    .place-card {
+      border: 1px solid #e0e0e0; border-radius: 6px;
+      margin-bottom: 5px; overflow: hidden;
+      background: #fafafa;
+    }
+    .place-card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 7px 10px; cursor: pointer;
+      gap: 6px;
+    }
+    .place-card-header:hover { background: #e8f0fe; }
+    .place-card-header.expanded { background: #e8f0fe; border-bottom: 1px solid #c5d9fb; }
+    .place-card-name { font-size: 12px; font-weight: bold; color: #1a1a1a; flex: 1; min-width: 0; }
+    .place-card-stats { font-size: 11px; color: #888; flex-shrink: 0; }
+    .place-card-arrow { font-size: 10px; color: #aaa; flex-shrink: 0; transition: transform 0.15s; }
+    .place-card-header.expanded .place-card-arrow { transform: rotate(90deg); }
+
+    .place-dates { display: none; background: #fff; border-top: 1px solid #e8f0fe; }
+    .place-date-item {
+      padding: 6px 14px; font-size: 11px; color: #444;
+      cursor: pointer; border-bottom: 1px solid #f0f0f0;
+    }
+    .place-date-item:last-child { border-bottom: none; }
+    .place-date-item:hover { background: #f0f6ff; color: #1a73e8; }
+
     /* ローディング */
     #loading {
       display: none; position: fixed;
@@ -280,14 +319,15 @@
 <div id="panel">
   <div id="panel-header">
     <h1>Timeline Viewer</h1>
-    <span class="version">v0.7</span>
+    <span class="version">v0.8</span>
   </div>
 
   <div id="tab-bar">
     <button class="tab-btn active" data-tab="tab-load">ファイル</button>
     <button class="tab-btn" data-tab="tab-cal">カレンダー</button>
     <button class="tab-btn" data-tab="tab-detail">履歴</button>
-    <button class="tab-btn" data-tab="tab-md">MD出力</button>
+    <button class="tab-btn" data-tab="tab-places">場所</button>
+    <button class="tab-btn" data-tab="tab-md">MD</button>
   </div>
 
   <div id="tab-load" class="tab-content active">
@@ -324,6 +364,15 @@
     </div>
     <div id="detail">
       <div id="detail-empty">日付を選択してください</div>
+    </div>
+  </div>
+
+  <div id="tab-places" class="tab-content">
+    <div id="places-search">
+      <input type="text" id="places-search-input" placeholder="場所名で絞り込み...">
+    </div>
+    <div id="places-list">
+      <div class="places-empty">JSONファイルを読み込んでください</div>
     </div>
   </div>
 
@@ -365,7 +414,14 @@ function switchTab(tabId) {
   document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === tabId));
 }
 document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  btn.addEventListener('click', () => {
+    switchTab(btn.dataset.tab);
+    if (btn.dataset.tab === 'tab-places') renderPlacesTab(document.getElementById('places-search-input').value);
+  });
+});
+
+document.getElementById('places-search-input').addEventListener('input', e => {
+  renderPlacesTab(e.target.value);
 });
 
 // ---- 滞在時間フィルター ----
@@ -546,6 +602,74 @@ function selectDate(dateStr) {
 
 }
 
+// ---- 場所タブ ----
+function buildPlacesData(filterText) {
+  const byKey = {};
+  for (const [dateStr, day] of Object.entries(dayMap)) {
+    for (const v of day.visits) {
+      const key = labelKey(v);
+      const lbl = placeLabels[key];
+      if (!lbl) continue;
+      if (!byKey[key]) byKey[key] = { key, label: lbl, visits: [] };
+      byKey[key].visits.push({ dateStr, durationMin: v.durationMin });
+    }
+  }
+  let list = Object.values(byKey).sort((a, b) => b.visits.length - a.visits.length);
+  if (filterText) {
+    const q = filterText.toLowerCase();
+    list = list.filter(p => p.label.toLowerCase().includes(q));
+  }
+  return list;
+}
+
+function renderPlacesTab(filterText) {
+  const container = document.getElementById('places-list');
+  if (!Object.keys(dayMap).length) {
+    container.innerHTML = '<div class="places-empty">JSONファイルを読み込んでください</div>';
+    return;
+  }
+  const data = buildPlacesData(filterText);
+  if (!data.length) {
+    container.innerHTML = '<div class="places-empty">ラベル付きの場所がありません<br>訪問地の ✎ ボタンでラベルを付けてください</div>';
+    return;
+  }
+  let html = '';
+  for (const place of data) {
+    const totalMin = place.visits.reduce((s, v) => s + v.durationMin, 0);
+    const sorted = [...place.visits].sort((a, b) => b.dateStr.localeCompare(a.dateStr));
+    const datesHtml = sorted.map(v =>
+      `<div class="place-date-item" data-date="${v.dateStr}">${formatDateJa(v.dateStr)}（${formatDuration(v.durationMin)}）</div>`
+    ).join('');
+    html += `
+      <div class="place-card">
+        <div class="place-card-header">
+          <div class="place-card-name">${place.label}</div>
+          <div class="place-card-stats">${place.visits.length}回 / ${formatDuration(totalMin)}</div>
+          <div class="place-card-arrow">&#9654;</div>
+        </div>
+        <div class="place-dates">${datesHtml}</div>
+      </div>`;
+  }
+  container.innerHTML = html;
+
+  container.querySelectorAll('.place-card-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const dates = header.nextElementSibling;
+      const expanded = dates.style.display === 'block';
+      dates.style.display = expanded ? 'none' : 'block';
+      header.classList.toggle('expanded', !expanded);
+    });
+  });
+
+  container.querySelectorAll('.place-date-item').forEach(item => {
+    item.addEventListener('click', e => {
+      e.stopPropagation();
+      selectDate(item.dataset.date);
+      switchTab('tab-detail');
+    });
+  });
+}
+
 // ---- ラベル管理 ----
 function labelKey(v) {
   return v.placeID || `${v.lat.toFixed(4)},${v.lng.toFixed(4)}`;
@@ -561,6 +685,11 @@ function saveLabel(key, name) {
   }
   localStorage.setItem('tlLabels', JSON.stringify(placeLabels));
   updateLabelCount();
+  // 場所タブが表示中なら再描画
+  const placesTab = document.getElementById('tab-places');
+  if (placesTab && placesTab.classList.contains('active')) {
+    renderPlacesTab(document.getElementById('places-search-input').value);
+  }
 }
 function updateLabelCount() {
   const el = document.getElementById('label-count');
@@ -925,6 +1054,7 @@ document.getElementById('label-file-input').addEventListener('change', e => {
         placeLabels = { ...placeLabels, ...data };
         localStorage.setItem('tlLabels', JSON.stringify(placeLabels));
         updateLabelCount();
+        renderPlacesTab(document.getElementById('places-search-input').value);
         if (selectedDate) {
           const day = dayMap[selectedDate];
           const ordered = day ? [...day.visits].sort((a,b) => new Date(a.startTime)-new Date(b.startTime)) : [];
